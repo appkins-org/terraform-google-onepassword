@@ -44,7 +44,7 @@ resource "google_cloud_run_v2_service" "default" {
     max_instance_request_concurrency = var.max_concurrency
 
     containers {
-      name = "api"
+      name = "connect-api"
 
       image = "1password/connect-api:latest"
 
@@ -102,7 +102,7 @@ resource "google_cloud_run_v2_service" "default" {
     }
 
     containers {
-      name = "sync"
+      name = "connect-sync"
 
       image = "1password/connect-sync:latest"
 
@@ -141,16 +141,26 @@ resource "google_cloud_run_v2_service" "default" {
       #   container_port = 8081
       # }
 
-      liveness_probe {
-        initial_delay_seconds = 15
-        failure_threshold     = 3
+      startup_probe {
         period_seconds        = 30
+        failure_threshold     = 3
+        initial_delay_seconds = 15
 
-        http_get {
-          path = "/heartbeat"
+        tcp_socket {
           port = 8081
         }
       }
+
+      # liveness_probe {
+      #   initial_delay_seconds = 15
+      #   failure_threshold     = 3
+      #   period_seconds        = 3600
+      # 
+      #   http_get {
+      #     path = "/heartbeat"
+      #     port = 8081
+      #   }
+      # }
 
       resources {
         limits = {
