@@ -144,8 +144,8 @@ resource "google_cloud_run_v2_service" "default" {
       name = "data"
 
       empty_dir {
-        medium     = "Memory"
-        size_limit = "128Mi"
+        medium     = "MEMORY"
+        size_limit = "256Mi"
       }
     }
   }
