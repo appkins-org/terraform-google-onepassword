@@ -5,7 +5,7 @@ resource "random_id" "connect" {
 resource "google_service_account" "connect" {
   project      = var.project
   account_id   = var.service_account_id
-  display_name = "Onepassword Service Account"
+  display_name = "1password Service Account"
 }
 
 resource "google_secret_manager_secret" "credentials" {
@@ -107,21 +107,6 @@ resource "google_cloud_run_v2_service" "default" {
       image = "1password/connect-sync:latest"
 
       env {
-        name  = "OP_HTTP_PORT"
-        value = 8081
-      }
-
-      env {
-        name = "OP_SESSION"
-        value_source {
-          secret_key_ref {
-            secret  = google_secret_manager_secret.credentials.secret_id
-            version = google_secret_manager_secret_version.credentials.version
-          }
-        }
-      }
-
-      env {
         name  = "OP_BUS_PORT"
         value = "11221"
       }
@@ -132,8 +117,23 @@ resource "google_cloud_run_v2_service" "default" {
       }
 
       env {
+        name  = "OP_HTTP_PORT"
+        value = 8081
+      }
+
+      env {
         name  = "OP_LOG_LEVEL"
         value = "info"
+      }
+
+      env {
+        name = "OP_SESSION"
+        value_source {
+          secret_key_ref {
+            secret  = google_secret_manager_secret.credentials.secret_id
+            version = google_secret_manager_secret_version.credentials.version
+          }
+        }
       }
 
       # ports {
