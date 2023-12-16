@@ -17,7 +17,7 @@ resource "google_secret_manager_secret" "credentials" {
 
 resource "google_secret_manager_secret_version" "credentials" {
   secret      = google_secret_manager_secret.credentials.name
-  secret_data = base64encode(replace(jsonencode(var.credential_data), "\u005c", ""))
+  secret_data = var.credentials_base64 != null ? var.credentials_base64 : base64encode(jsonencode(var.credential_data)) # replace(jsonencode(var.credential_data), "\u005c", ""))
 }
 
 resource "google_secret_manager_secret_iam_member" "secret-access" {

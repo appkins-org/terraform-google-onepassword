@@ -57,9 +57,21 @@ variable "credential_secret_name" {
 variable "credential_data" {
   description = "Credential Data"
   type        = any
+  default     = null
 
   validation {
-    condition     = can(jsonencode(var.credential_data))
+    condition     = var.credential_data != null ? can(jsonencode(var.credential_data)) : true
     error_message = "Credential data must be a valid credential object."
+  }
+}
+
+variable "credentials_base64" {
+  description = "Credential Data"
+  type        = string
+  default     = null
+
+  validation {
+    condition     = var.credentials_base64 != null ? can(base64decode(var.credentials_base64)) : true
+    error_message = "Credential data must be base64 encoded."
   }
 }
