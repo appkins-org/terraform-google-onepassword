@@ -111,10 +111,10 @@ resource "google_cloud_run_v2_service" "default" {
         }
       }
 
-      ports {
-        name           = "http1"
-        container_port = 8081
-      }
+      # ports {
+      #   name           = "http1"
+      #   container_port = 8081
+      # }
 
       liveness_probe {
         initial_delay_seconds = 15
