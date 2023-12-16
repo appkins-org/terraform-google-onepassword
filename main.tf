@@ -53,6 +53,16 @@ resource "google_cloud_run_v2_service" "default" {
         value = 8080
       }
 
+      env {
+        name = "OP_SESSION"
+        value_source {
+          secret_key_ref {
+            secret  = google_secret_manager_secret.credentials.secret_id
+            version = google_secret_manager_secret_version.credentials.version
+          }
+        }
+      }
+
       ports {
         name           = "http1"
         container_port = 8080
@@ -79,11 +89,6 @@ resource "google_cloud_run_v2_service" "default" {
         name       = "data"
         mount_path = "/home/opuser/.op/data"
       }
-
-      volume_mounts {
-        name       = "credentials"
-        mount_path = "/home/opuser/.op"
-      }
     }
 
     containers {
@@ -93,7 +98,17 @@ resource "google_cloud_run_v2_service" "default" {
 
       env {
         name  = "OP_HTTP_PORT"
-        value = "8081"
+        value = 8081
+      }
+
+      env {
+        name = "OP_SESSION"
+        value_source {
+          secret_key_ref {
+            secret  = google_secret_manager_secret.credentials.secret_id
+            version = google_secret_manager_secret_version.credentials.version
+          }
+        }
       }
 
       ports {
@@ -133,18 +148,11 @@ resource "google_cloud_run_v2_service" "default" {
         size_limit = "128Mi"
       }
     }
+  }
 
-    volumes {
-      name = "credentials"
-      secret {
-        secret       = google_secret_manager_secret.credentials.secret_id
-        default_mode = 292 # 0444
-        items {
-          version = google_secret_manager_secret_version.credentials.version
-          path    = "1password-credentials.json"
-        }
-      }
-    }
+  traffic {
+    type    = "TRAFFIC_TARGET_ALLOCATION_TYPE_LATEST"
+    percent = 100
   }
 }
 
