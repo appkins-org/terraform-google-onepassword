@@ -1,7 +1,7 @@
 variable "name" {
   description = "Application name."
   type        = string
-  default     = "vault"
+  default     = "connect"
   nullable    = false
 }
 
@@ -23,25 +23,13 @@ variable "project" {
   type        = string
 }
 
-variable "vault_image" {
-  description = "Vault docker image (i.e. hashicorp/vault."
-  type        = string
-  default     = "hashicorp/vault"
+variable "max_instance_count" {
+  description = "Max number of container instances."
+  type        = number
+  default     = 1
 }
 
-variable "vault_version" {
-  description = "Vault version to use."
-  type        = string
-  default     = "1.7.2"
-}
-
-variable "bucket_force_destroy" {
-  description = "CAUTION: Set force_destroy for Storage Bucket. This is where the vault data is stored. Setting this to true will allow terraform destroy to delete the bucket."
-  type        = bool
-  default     = false
-}
-
-variable "container_concurrency" {
+variable "max_concurrency" {
   description = "Max number of connections per container instance."
   type        = number
   default     = 80 # Max per Cloud Run Documentation
@@ -53,56 +41,25 @@ variable "vpc_connector" {
   default     = ""
 }
 
-variable "vault_ui" {
-  description = "Enable Vault UI."
-  type        = bool
-  default     = false
-}
-
-variable "vault_api_addr" {
-  description = "Full HTTP endpoint of Vault Server if using a custom domain name. Leave blank otherwise."
-  type        = string
-  default     = ""
-}
-
-variable "vault_kms_keyring_name" {
-  description = "Name of the Google KMS keyring to use."
-  type        = string
-  default     = ""
-}
-
-variable "vault_kms_key_rotation" {
-  description = "The period for KMS key rotation."
-  type        = string
-  default     = "2592000s"
-}
-
-variable "vault_kms_key_algorithm" {
-  description = "The cryptographic algorithm to be used with the KMS key."
-  type        = string
-  default     = "GOOGLE_SYMMETRIC_ENCRYPTION"
-}
-
-variable "vault_kms_key_protection_level" {
-  description = "The protection level to be used with the KMS key."
-  type        = string
-  default     = "SOFTWARE"
-}
-
-variable "vault_service_account_id" {
+variable "service_account_id" {
   description = "ID for the service account to be used. This is the part of the service account email before the `@` symbol."
   type        = string
-  default     = "vault-sa"
+  default     = "connect-sa"
 }
 
-variable "vault_storage_bucket_name" {
-  description = "Storage bucket name to be used."
+variable "credential_secret_name" {
+  description = "Name of the secret in Secret Manager that contains the credentials for the vault server."
   type        = string
   default     = ""
+  nullable    = false
 }
 
-variable "plugin_directory" {
-  description = "Path to the plugin directory. This is where the vault plugins are stored."
+variable "credential_data" {
+  description = "Base64 Credential Data"
   type        = string
-  default     = "/usr/local/libexec/vault"
+
+  validation {
+    condition     = can(jsondecode(base64decode(var.credential_data)))
+    error_message = "Credential data must be a base 64 encoded credential.json file."
+  }
 }

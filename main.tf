@@ -1,149 +1,147 @@
-resource "random_id" "vault" {
+resource "random_id" "connect" {
   byte_length = 2
 }
 
-resource "google_service_account" "vault" {
+resource "google_service_account" "connect" {
   project      = var.project
-  account_id   = var.vault_service_account_id
-  display_name = "Vault Service Account for KMS auto-unseal"
+  account_id   = var.service_account_id
+  display_name = "Onepassword Service Account"
 }
 
-resource "google_storage_bucket" "vault" {
-  name          = local.vault_storage_bucket_name
-  project       = var.project
-  location      = "US"
-  force_destroy = var.bucket_force_destroy
+resource "google_secret_manager_secret" "credentials" {
+  secret_id = local.secret_name
+  replication {
+    auto {}
+  }
 }
 
-resource "google_storage_bucket_iam_member" "member" {
-  bucket = google_storage_bucket.vault.name
-  role   = "roles/storage.objectAdmin"
-  member = "serviceAccount:${google_service_account.vault.email}"
+resource "google_secret_manager_secret_version" "credentials" {
+  secret      = google_secret_manager_secret.credentials.name
+  secret_data = var.credential_data
 }
 
-# Create a KMS key ring
-resource "google_kms_key_ring" "vault" {
-  name     = local.vault_kms_keyring_name
+resource "google_secret_manager_secret_iam_member" "secret-access" {
+  secret_id = google_secret_manager_secret.credentials.id
+  role      = "roles/secretmanager.secretAccessor"
+  member    = "serviceAccount:${google_service_account.connect.email}"
+}
+
+resource "google_cloud_run_v2_service" "default" {
+  name     = var.name
   project  = var.project
   location = var.location
-}
 
-# Create a crypto key for the key ring, rotate daily
-resource "google_kms_crypto_key" "vault" {
-  name            = "${var.name}-key"
-  key_ring        = google_kms_key_ring.vault.id
-  rotation_period = var.vault_kms_key_rotation
-
-  version_template {
-    algorithm        = var.vault_kms_key_algorithm
-    protection_level = var.vault_kms_key_protection_level
-  }
-}
-
-# Add the service account to the Keyring
-resource "google_kms_key_ring_iam_member" "vault" {
-  key_ring_id = google_kms_key_ring.vault.id
-  role        = "roles/owner"
-  member      = "serviceAccount:${google_service_account.vault.email}"
-}
-
-resource "google_cloud_run_service" "default" {
-  name                       = var.name
-  project                    = var.project
-  location                   = var.location
-  autogenerate_revision_name = true
-
-  metadata {
-    namespace = var.project
-
-    annotations = {
-      "run.googleapis.com/launch-stage" = "BETA"
-    }
-  }
+  ingress      = "INGRESS_TRAFFIC_ALL"
+  launch_stage = "BETA"
 
   template {
-    metadata {
-      annotations = {
-        "autoscaling.knative.dev/maxScale"        = 1 # HA not Supported
-        "run.googleapis.com/vpc-access-connector" = var.vpc_connector != "" ? var.vpc_connector : null
-        # Hardcoded here after a change in the Cloud Run API response
-        # "run.googleapis.com/sandbox" = "gvisor"
+    service_account = google_service_account.connect.email
+
+    scaling {
+      max_instance_count = var.max_instance_count
+    }
+
+    max_instance_request_concurrency = var.max_concurrency
+
+    containers {
+      name = "api"
+
+      image = "1password/connect-api:latest"
+
+      env {
+        name  = "OP_HTTP_PORT"
+        value = 8080
+      }
+
+      ports {
+        name           = "http1"
+        container_port = 8080
+      }
+
+      startup_probe {
+        period_seconds        = 30
+        failure_threshold     = 3
+        initial_delay_seconds = 15
+
+        tcp_socket {
+          port = 8080
+        }
+      }
+
+      resources {
+        limits = {
+          cpu    = "1000m"
+          memory = "256Mi"
+        }
+      }
+
+      volume_mounts {
+        name       = "data"
+        mount_path = "/home/opuser/.op/data"
+      }
+
+      volume_mounts {
+        name       = "credentials"
+        mount_path = "/home/opuser/.op"
       }
     }
-    spec {
-      service_account_name  = google_service_account.vault.email
-      container_concurrency = var.container_concurrency
-      containers {
-        # Specifying args seems to require the command / entrypoint
-        image = "${var.vault_image}:${var.vault_version}"
 
-        command = [
-          "/bin/sh",
-          "-c"
-        ]
+    containers {
+      name = "sync"
 
-        args = [
-          join(" && ", [
-            "mkdir -p ${var.plugin_directory}",
-            "wget https://github.com/1Password/vault-plugin-secrets-onepassword/releases/download/v1.1.0/vault-plugin-secrets-onepassword_1.1.0_linux_amd64.zip -O /tmp/vault.zip",
-            "unzip -d /tmp /tmp/vault.zip",
-            "mv /tmp/vault-plugin-secrets-onepassword_v1.1.0 ${var.plugin_directory}/onepassword",
-            "chmod +x ${var.plugin_directory}/onepassword",
-            "/usr/local/bin/docker-entrypoint.sh server"
-          ])
-        ]
+      image = "1password/connect-sync:latest"
 
-        env {
-          name  = "SKIP_SETCAP"
-          value = "true"
-        }
+      env {
+        name  = "OP_HTTP_PORT"
+        value = "8081"
+      }
 
-        env {
-          name  = "VAULT_LOCAL_CONFIG"
-          value = local.vault_config
-        }
+      ports {
+        name           = "http1"
+        container_port = 8081
+      }
 
-        env {
-          name  = "VAULT_API_ADDR"
-          value = var.vault_api_addr
-        }
+      liveness_probe {
+        initial_delay_seconds = 15
+        failure_threshold     = 3
+        period_seconds        = 30
 
-        ports {
-          name           = "http1"
-          container_port = 8080
-        }
-
-        startup_probe {
-          period_seconds        = 240
-          timeout_seconds       = 240
-          failure_threshold     = 3
-          initial_delay_seconds = 15
-
-          tcp_socket {
-            port = 8080
-          }
-        }
-
-        resources {
-          limits = {
-            cpu    = "1000m"
-            memory = "256Mi"
-          }
-          requests = {}
-        }
-
-        volume_mounts {
-          name       = "plugins"
-          mount_path = var.plugin_directory
+        http_get {
+          path = "/heartbeat"
+          port = 8081
         }
       }
 
-      volumes {
-        name = "plugins"
+      resources {
+        limits = {
+          cpu    = "1000m"
+          memory = "256Mi"
+        }
+      }
 
-        empty_dir {
-          medium     = "Memory"
-          size_limit = "32Mi"
+      volume_mounts {
+        name       = "data"
+        mount_path = "/home/opuser/.op/data"
+      }
+    }
+
+    volumes {
+      name = "data"
+
+      empty_dir {
+        medium     = "Memory"
+        size_limit = "128Mi"
+      }
+    }
+
+    volumes {
+      name = "credentials"
+      secret {
+        secret       = google_secret_manager_secret.credentials.secret_id
+        default_mode = 292 # 0444
+        items {
+          version = google_secret_manager_secret_version.credentials.version
+          path    = "1password-credentials.json"
         }
       }
     }
@@ -151,9 +149,9 @@ resource "google_cloud_run_service" "default" {
 }
 
 resource "google_cloud_run_service_iam_policy" "noauth" {
-  location = google_cloud_run_service.default.location
-  project  = google_cloud_run_service.default.project
-  service  = google_cloud_run_service.default.name
+  location = google_cloud_run_v2_service.default.location
+  project  = google_cloud_run_v2_service.default.project
+  service  = google_cloud_run_v2_service.default.name
 
   policy_data = data.google_iam_policy.noauth.policy_data
 }
@@ -161,14 +159,14 @@ resource "google_cloud_run_service_iam_policy" "noauth" {
 resource "google_cloud_run_domain_mapping" "default" {
   count = var.custom_domain != "" ? 1 : 0
 
-  location = google_cloud_run_service.default.location
+  location = google_cloud_run_v2_service.default.location
   name     = var.custom_domain
 
   metadata {
-    namespace = google_cloud_run_service.default.project
+    namespace = google_cloud_run_v2_service.default.project
   }
 
   spec {
-    route_name = google_cloud_run_service.default.name
+    route_name = google_cloud_run_v2_service.default.name
   }
 }
