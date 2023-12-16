@@ -63,6 +63,16 @@ resource "google_cloud_run_v2_service" "default" {
         }
       }
 
+      env {
+        name  = "OP_BUS_PORT"
+        value = "11220"
+      }
+
+      env {
+        name  = "OP_BUS_PEERS"
+        value = "localhost:11221"
+      }
+
       ports {
         name           = "http1"
         container_port = 8080
@@ -109,6 +119,21 @@ resource "google_cloud_run_v2_service" "default" {
             version = google_secret_manager_secret_version.credentials.version
           }
         }
+      }
+
+      env {
+        name  = "OP_BUS_PORT"
+        value = "11221"
+      }
+
+      env {
+        name  = "OP_BUS_PEERS"
+        value = "localhost:11220"
+      }
+
+      env {
+        name  = "OP_LOG_LEVEL"
+        value = "info"
       }
 
       # ports {
